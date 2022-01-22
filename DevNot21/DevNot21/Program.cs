@@ -4,10 +4,14 @@ using DevNot21.Entities;
 using DevNot21.Entities.DbContexts;
 using DevNot21.Model;
 using DevNot21.Service;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text;
 /// <summary>
 /// https://medium.com/geekculture/end-to-end-project-with-minimal-api-in-asp-net-core-6-0-f32eaca9334d
 /// </summary>
@@ -33,6 +37,24 @@ var mappingConfig = new MapperConfiguration(mc =>
 
 IMapper autoMapper = mappingConfig.CreateMapper();
 builder.Services.AddSingleton(autoMapper);
+
+builder.Services.AddAuthorization();
+
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
+{
+    options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters()
+    {
+        ValidateActor = true,
+        ValidateAudience = true,
+        ValidateLifetime = true,
+        ValidateIssuerSigningKey = true,
+        ValidIssuer = builder.Configuration["Issuer"],
+        ValidAudience = builder.Configuration["Audience"],
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["SigningKey"]))
+    };
+});
+
+builder.Services.AddSingleton<ITokenService>(new TokenService(builder));
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -70,6 +92,15 @@ builder.Services.AddSwaggerGen(c =>
 
 
 var app = builder.Build();
+
+app.UseAuthorization();
+app.UseAuthentication();
+app.UseCors(p =>
+{
+    p.AllowAnyOrigin();
+    p.WithMethods("GET");
+    p.AllowAnyHeader();
+});
 
 if(app.Environment.IsDevelopment())
 {
@@ -126,13 +157,34 @@ app.MapPost("/InsertUser", async (ABYS_PRODContext context, DevNot21.Model.User 
     return new OkResult();
 });
 
-app.MapGet("/GetAllUsersByName/{name}", async (HttpContext http, ABYS_PRODContext context, string name) =>
+app.MapGet("/GetAllUsersByName/{name}",
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)] async (HttpContext http, ABYS_PRODContext context, string name) =>
 {
     var model = await context.DbUsers.Where(u =>
     u.Name.Contains(name)).ToListAsync(); var result = autoMapper.Map<List<DevNot21.Model.User>>(model);
     return result;
+}).RequireAuthorization();
+
+app.MapPost("/login", [AllowAnonymous] async (ABYS_PRODContext _context, HttpContext http, ITokenService service, Login login) =>
+{
+    if (!string.IsNullOrEmpty(login.UserName) && !string.IsNullOrEmpty(login.Password))
+    {
+        var userModel = await _context.DbUsers.Where(u => u.UserName == login.UserName && u.Password == login.Password)
+            .FirstOrDefaultAsync(); 
+        
+        if (userModel == null)
+        {
+            http.Response.StatusCode = 401;
+            await http.Response.WriteAsJsonAsync(new { Message = "Yor Are Not Authorized!" });
+            return;
+        }
+
+        var token = service.GetToken(userModel);
+        await http.Response.WriteAsJsonAsync(new { token = token });
+        return;
+    }
 });
 
-app.Urls.Add("https://localhost:7214");
+//app.Urls.Add("https://localhost:7214");
 
 app.Run();

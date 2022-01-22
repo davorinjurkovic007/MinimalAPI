@@ -32,7 +32,7 @@ namespace DevNot21.Entities.DbContexts
         public virtual DbSet<DbSecurityRole> DbSecurityRoles { get; set; } = null!;
         public virtual DbSet<DbSecurityUserAction> DbSecurityUserActions { get; set; } = null!;
         public virtual DbSet<DbSecurityUserRole> DbSecurityUserRoles { get; set; } = null!;
-        public virtual DbSet<DbUser> DbUsers { get; set; } = null!;
+        public virtual DbSet<DbUser> DbUsers { get; set; } = default!;
         public virtual DbSet<DbUser2> DbUser2s { get; set; } = null!;
         public virtual DbSet<DbUser2017> DbUser2017s { get; set; } = null!;
         public virtual DbSet<DbUser2018> DbUser2018s { get; set; } = null!;
